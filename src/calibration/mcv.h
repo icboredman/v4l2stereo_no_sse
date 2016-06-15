@@ -3,9 +3,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include <cvaux.h>
-#include <ml.h>
-#include <highgui.h>
+#include <opencv.hpp>
 
 #define CVEX_KEY_ARROW_LEFT 2424832
 #define CVEX_KEY_ARROW_RIGHT 2555904

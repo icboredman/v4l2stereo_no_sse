@@ -5,9 +5,9 @@ ARCH_TYPE=`uname -m`
 PREFIX?=/usr/local
 
 all:
-	g++ -Wall -pedantic -O3 -std=c++11 -o ${APP} src/*.cpp -Isrc src/calibration/*.cpp src/elas/*.cpp -msse3 -fopenmp -I/usr/include/opencv -I/usr/include/opencv  -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_objdetect -lopencv_ocl -lopencv_photo -lopencv_stitching -lopencv_superres -lopencv_ts -lopencv_video -lopencv_videostab  
+	g++ -Wall -pedantic -O3 -std=c++11 -o ${APP} src/*.cpp -Isrc src/calibration/*.cpp src/elas/*.cpp -fopenmp -I/usr/include/opencv2 -I/usr/include/opencv  -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_objdetect -lopencv_ocl -lopencv_photo -lopencv_stitching -lopencv_superres -lopencv_ts -lopencv_video -lopencv_videostab  
 debug:
-	g++ -Wall -pedantic -g -std=c++11 -o ${APP} src/*.cpp -Isrc src/calibration/*.cpp src/elas/*.cpp -msse3 -fopenmp -I/usr/include/opencv -I/usr/include/opencv  -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_objdetect -lopencv_ocl -lopencv_photo -lopencv_stitching -lopencv_superres -lopencv_ts -lopencv_video -lopencv_videostab  
+	g++ -Wall -pedantic -g -std=c++11 -o ${APP} src/*.cpp -Isrc src/calibration/*.cpp src/elas/*.cpp -fopenmp -I/usr/include/opencv2 -I/usr/include/opencv  -lopencv_calib3d -lopencv_contrib -lopencv_core -lopencv_features2d -lopencv_flann -lopencv_gpu -lopencv_highgui -lopencv_imgproc -lopencv_legacy -lopencv_ml -lopencv_objdetect -lopencv_ocl -lopencv_photo -lopencv_stitching -lopencv_superres -lopencv_ts -lopencv_video -lopencv_videostab  
 source:
 	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs
 	gzip -f9n ../${APP}_${VERSION}.orig.tar

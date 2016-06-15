@@ -21,8 +21,7 @@
 #ifndef STEREO_H_
 #define STEREO_H_
 
-#include <cv.h>
-#include <highgui.h>
+#include <opencv.hpp>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

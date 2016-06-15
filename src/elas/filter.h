@@ -22,8 +22,7 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA
 #ifndef __FILTER_H__
 #define __FILTER_H__
 
-#include <emmintrin.h>
-#include <pmmintrin.h>
+#include "emmintrin.h"
 
 // define fixed-width datatypes for Visual Studio projects
 #ifndef _MSC_VER
@@ -43,6 +42,7 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA
 //               5x5 blob and corner filters based on SSE2/3 instructions
 namespace filter {
 
+#if 0
   // private namespace, public user functions at the bottom of this file
   namespace detail {
     void integral_image( const uint8_t* in, int32_t* out, int w, int h );
@@ -74,11 +74,13 @@ namespace filter {
 
     void convolve_row_p1p1p0m1m1_5x5( const int16_t* in, int16_t* out, int w, int h );
 
-    void convolve_cols_3x3( const unsigned char* in, int16_t* out_v, int16_t* out_h, int w, int h );
+    void convolve_cols_3x3( const uint8_t* in, int16_t* out_v, int16_t* out_h, int w, int h );
   }
+#endif
 
   void sobel3x3( const uint8_t* in, uint8_t* out_v, uint8_t* out_h, int w, int h );
 
+#if 0
   void sobel5x5( const uint8_t* in, uint8_t* out_v, uint8_t* out_h, int w, int h );
 
   // -1 -1  0  1  1
@@ -94,6 +96,7 @@ namespace filter {
   // -1  1  1  1 -1
   // -1 -1 -1 -1 -1
   void blob5x5( const uint8_t* in, int16_t* out, int w, int h );
+#endif
 }
 
 #endif

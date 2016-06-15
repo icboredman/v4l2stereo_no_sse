@@ -7,7 +7,7 @@
 #define __LIBCAM__H__
 
 //#ifdef USE_OPENCV
-#include <cv.h>
+#include <opencv.hpp>
 //#endif
 
 struct buffer {

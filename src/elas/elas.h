@@ -29,7 +29,7 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA
 #include <string.h>
 #include <stdlib.h>
 #include <vector>
-#include <emmintrin.h>
+#include "emmintrin.h"
 
 // define fixed-width datatypes for Visual Studio projects
 #ifndef _MSC_VER
@@ -112,7 +112,7 @@ public:
         filter_median         = 0;
         filter_adaptive_mean  = 1;
         postprocess_only_left = 1;
-        subsampling           = 0;
+        subsampling           = false;
         
       // default settings for middlebury benchmark
       // (interpolate all missing disparities)
@@ -139,7 +139,7 @@ public:
         filter_median         = 1;
         filter_adaptive_mean  = 0;
         postprocess_only_left = 0;
-        subsampling           = 0;
+        subsampling           = false;
       }
     }
   };
@@ -190,7 +190,7 @@ private:
   void removeRedundantSupportPoints (int16_t* D_can,int32_t D_can_width,int32_t D_can_height,
                                      int32_t redun_max_dist, int32_t redun_threshold, bool vertical);
   void addCornerSupportPoints (std::vector<support_pt> &p_support);
-  inline int16_t computeMatchingDisparity (const int32_t &u,const int32_t &v,uint8_t* I1_desc,uint8_t* I2_desc,const bool &right_image);
+  inline int16_t computeMatchingDisparity (const int32_t u,const int32_t v,uint8_t* I1_desc,uint8_t* I2_desc,const bool right_image);
   std::vector<support_pt> computeSupportMatches (uint8_t* I1_desc,uint8_t* I2_desc);
 
   // triangulation & grid
@@ -199,10 +199,10 @@ private:
   void createGrid (std::vector<support_pt> p_support,int32_t* disparity_grid,int32_t* grid_dims,bool right_image);
 
   // matching
-  inline void updatePosteriorMinimum (__m128i* I2_block_addr,const int32_t &d,const int32_t &w,
-                                      const __m128i &xmm1,__m128i &xmm2,int32_t &val,int32_t &min_val,int32_t &min_d);
-  inline void updatePosteriorMinimum (__m128i* I2_block_addr,const int32_t &d,
-                                      const __m128i &xmm1,__m128i &xmm2,int32_t &val,int32_t &min_val,int32_t &min_d);
+  inline void updatePosteriorMinimum (const uint8_t* I1_block_addr,const uint8_t* I2_block_addr,const int32_t d,const int32_t w,
+                                      int32_t &min_val,int32_t &min_d);
+  inline void updatePosteriorMinimum (const uint8_t* I1_block_addr,const uint8_t* I2_block_addr,const int32_t d,
+                                      int32_t &min_val,int32_t &min_d);
   inline void findMatch (int32_t &u,int32_t &v,float &plane_a,float &plane_b,float &plane_c,
                          int32_t* disparity_grid,int32_t *grid_dims,uint8_t* I1_desc,uint8_t* I2_desc,
                          int32_t *P,int32_t &plane_radius,bool &valid,bool &right_image,float* D);
@@ -226,7 +226,8 @@ private:
   // memory aligned input images + dimensions
   uint8_t *I1,*I2;
   int32_t width,height,bpl;
-  
+  bool copied;
+
   // profiling timer
 #ifdef PROFILE
   Timer timer;

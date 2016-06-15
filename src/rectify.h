@@ -25,8 +25,7 @@
 #include <iostream>
 #include <string.h>
 #include <vector>
-#include <cv.h>
-#include <highgui.h>
+#include <opencv.hpp>
 
 using namespace std;
 

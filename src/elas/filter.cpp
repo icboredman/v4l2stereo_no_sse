@@ -43,6 +43,7 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA
 //               5x5 blob and corner filters based on SSE2/3 instructions
 namespace filter {
 
+#if 0
   // private namespace, public user functions at the bottom of this file
   namespace detail {
     void integral_image( const uint8_t* in, int32_t* out, int w, int h ) {
@@ -66,11 +67,23 @@ namespace filter {
 
     void unpack_8bit_to_16bit( const __m128i a, __m128i& b0, __m128i& b1 ) {
       __m128i zero = _mm_setzero_si128();
+      // r0 := a0 ; r1 := b0
+      // r2 := a1 ; r3 := b1
+      // ...
+      // r14 := a7 ; r15 := b7
       b0 = _mm_unpacklo_epi8( a, zero );
       b1 = _mm_unpackhi_epi8( a, zero );
     }
 
     void pack_16bit_to_8bit_saturate( const __m128i a0, const __m128i a1, __m128i& b ) {
+      // r0 := UnsignedSaturate(a0)
+      // r1 := UnsignedSaturate(a1)
+      // ...
+      // r7 := UnsignedSaturate(a7)
+      // r8 := UnsignedSaturate(b0)
+      // r9 := UnsignedSaturate(b1)
+      // ...
+      // r15 := UnsignedSaturate(b7)
       b = _mm_packus_epi16( a0, a1 );
     }
 
@@ -111,6 +124,7 @@ namespace filter {
           i3_register      = _mm_add_epi16( i3_register, i3_register  );
           *result_register = _mm_add_epi16( i3_register, *result_register );
           *result_register = _mm_add_epi16( i4_register, *result_register );
+	  // Shifts the 8 signed 16-bit integers in a right by count bits while shifting in the sign bit.
           *result_register = _mm_srai_epi16( *result_register, 7 );
           *result_register = _mm_add_epi16( *result_register, offs );
           if( i==0 ) {
@@ -122,6 +136,7 @@ namespace filter {
           }
         }
         pack_16bit_to_8bit_saturate( result_register_lo, result_register_hi, result_register_lo );
+        // *p := a
         _mm_storeu_si128( ((__m128i*)( result )), result_register_lo );
       }
     }
@@ -137,6 +152,7 @@ namespace filter {
       const int16_t* 	i4 = in+4;
       uint8_t* result    = out + 2;
       const int16_t* const end_input = in + w*h;
+      // Sets the 8 signed 16-bit integer values to w.
       __m128i offs = _mm_set1_epi16( 128 );
       for( ; i4 < end_input; i0 += 1, i1 += 8, i3 += 8, i4 += 8, result += 16 ) {
         __m128i result_register_lo;
@@ -294,6 +310,7 @@ namespace filter {
         *result_h     = _mm_add_epi16( ihi, *result_h );
         *(result_h+1) = _mm_add_epi16( ilo, *(result_h+1) );
         *(result_h+1) = _mm_add_epi16( ilo, *(result_h+1) );
+        // Multiplies the 8 signed or unsigned 16-bit integers from a by the 8 signed or unsigned 16-bit integers from b.
         ihi = _mm_mullo_epi16( ihi, fours );
         ilo = _mm_mullo_epi16( ilo, fours );
         *result_v     = _mm_add_epi16( *result_v, ihi );
@@ -369,7 +386,7 @@ namespace filter {
       }
     }
 
-    void convolve_cols_3x3( const unsigned char* in, int16_t* out_v, int16_t* out_h, int w, int h ) {
+    void convolve_cols_3x3( const uint8_t* in, int16_t* out_v, int16_t* out_h, int w, int h ) {
       using namespace std;
       assert( w % 16 == 0 && "width must be multiple of 16!" );
       const int w_chunk  = w/16;
@@ -385,7 +402,6 @@ namespace filter {
         *result_v     = _mm_setzero_si128();
         *(result_v+1) = _mm_setzero_si128();
         __m128i ilo, ihi;
-        unpack_8bit_to_16bit( *i0, ihi, ilo );
         unpack_8bit_to_16bit( *i0, ihi, ilo );
         *result_h     = _mm_add_epi16( ihi, *result_h );
         *(result_h+1) = _mm_add_epi16( ilo, *(result_h+1) );
@@ -404,8 +420,17 @@ namespace filter {
       }
     }
   }
+#endif
 
+  // [ -1  0 +1 ]
+  // [ -2  0 +2 ] mask for Gv
+  // [ -1  0 +1 ]
+  //
+  // [ -1 -2 -1 ]
+  // [  0  0  0 ] mask for Gh
+  // [ +1 +2 +1 ]
   void sobel3x3( const uint8_t* in, uint8_t* out_v, uint8_t* out_h, int w, int h ) {
+#if 0
     int16_t* temp_h = (int16_t*)( _mm_malloc( w*h*sizeof( int16_t ), 16 ) );
     int16_t* temp_v = (int16_t*)( _mm_malloc( w*h*sizeof( int16_t ), 16 ) );
     detail::convolve_cols_3x3( in, temp_v, temp_h, w, h );
@@ -413,8 +438,54 @@ namespace filter {
     detail::convolve_121_row_3x3_16bit( temp_h, out_h, w, h );
     _mm_free( temp_h );
     _mm_free( temp_v );
+#else
+    // Top row is zero
+    for (int i = 0; i < w; i++) {
+        *out_v++ = 0;
+        *out_h++ = 0;
+    }
+    const uint8_t* in0 = in;
+    const uint8_t* in1 = in0 + w;
+    const uint8_t* in2 = in1 + w;
+    for (int j = 1; j < h-1; j++) {
+        // Leftmost column is zero
+        *out_v++ = 0;
+        *out_h++ = 0;
+        for (int i = 1; i < w-1; i++) {
+            int gv = in0[2] - in0[0] + 2*in1[2] - 2*in1[0] + in2[2] - in2[0];
+            gv >>= 2;
+            if (gv > 127)
+                gv = 127;
+            else if (gv < -128)
+                gv = -128;
+            *out_v++ = gv + 128;
+            int gh = in2[0] + 2*in2[1] +in2[2] - in0[0] - 2*in0[1] - in0[2];
+            gh >>= 2;
+            if (gh > 127)
+                gh = 127;
+            else if (gh < -128)
+                gh = -128;
+            *out_h++ = gh + 128;
+            in0++;
+            in1++;
+            in2++;
+        }
+        in0 += 2;
+        in1 += 2;
+        in2 += 2;
+        // Rightmost column is zero
+        *out_v++ = 0;
+        *out_h++ = 0;
+    }
+    // Bottom row is zero
+    for (int i = 0; i < w; i++) {
+        *out_v++ = 0;
+        *out_h++ = 0;
+    }
+#endif
   }
 
+#if 0
   void sobel5x5( const uint8_t* in, uint8_t* out_v, uint8_t* out_h, int w, int h ) {
     int16_t* temp_h = (int16_t*)( _mm_malloc( w*h*sizeof( int16_t ), 16 ) );
     int16_t* temp_v = (int16_t*)( _mm_malloc( w*h*sizeof( int16_t ), 16 ) );
@@ -465,4 +536,5 @@ namespace filter {
     }
     _mm_free( integral );
   }
+#endif
 }

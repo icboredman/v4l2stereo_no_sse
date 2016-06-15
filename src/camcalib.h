@@ -27,8 +27,7 @@
 
 #include <cctype>
 #include <iostream>
-#include <cv.h>
-#include <highgui.h>
+#include <opencv.hpp>
 #include <stdio.h>
 #include <omp.h>
 #include <stdlib.h>

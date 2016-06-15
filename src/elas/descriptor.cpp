@@ -21,7 +21,6 @@ Street, Fifth Floor, Boston, MA 02110-1301, USA
 
 #include "descriptor.h"
 #include "filter.h"
-#include <emmintrin.h>
 
 using namespace std;
 

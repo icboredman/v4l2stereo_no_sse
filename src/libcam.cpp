@@ -42,10 +42,6 @@
 
 #include "libcam.h"
 
-//#ifdef USE_OPENCV
-#include <cv.h>
-//#endif
-
 static void errno_exit (const char *           s)
 {
 	fprintf (stderr, "%s error %d, %s\n",
@@ -665,14 +661,15 @@ void Camera::toIplImage(IplImage *l) {
 
 			int i=(y*w2+x)*4;
 			y0=data[i];
-			u=data[i+1];
+			u=data[i+1] - 128;
 			y1=data[i+2];
-			v=data[i+3];
+			v=data[i+3] - 128;
 
+                        // XXX Use table lookup
 			int r, g, b;
-			r = y0 + (1.370705 * (v-128));
-			g = y0 - (0.698001 * (v-128)) - (0.337633 * (u-128));
-			b = y0 + (1.732446 * (u-128));
+			r = y0 + (1.370705 * v);
+			g = y0 - (0.698001 * v) - (0.337633 * u);
+			b = y0 + (1.732446 * u);
 
 			if(r > 255) r = 255;
 			if(g > 255) g = 255;
@@ -687,9 +684,9 @@ void Camera::toIplImage(IplImage *l) {
 			l_[i+2] = (unsigned char)(r); //R
 
 
-			r = y1 + (1.370705 * (v-128));
-			g = y1 - (0.698001 * (v-128)) - (0.337633 * (u-128));
-			b = y1 + (1.732446 * (u-128));
+			r = y1 + (1.370705 * v);
+			g = y1 - (0.698001 * v) - (0.337633 * u);
+			b = y1 + (1.732446 * u);
 
 			if(r > 255) r = 255;
 			if(g > 255) g = 255;

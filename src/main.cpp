@@ -48,8 +48,7 @@
 #define USE_OPENCV
 
 #include <iostream>
-#include <cv.h>
-#include <highgui.h>
+#include <opencv.hpp>
 #include <stdio.h>
 #include <sstream>
 #include <omp.h>
@@ -74,6 +73,7 @@
 #define VERSION			1.054
 
 using namespace std;
+using namespace cv;
 
 /*!
  * \brief expands a subregion of the given image with pixel interpolation.  It is assumed that the subregion has the same aspect as the original.

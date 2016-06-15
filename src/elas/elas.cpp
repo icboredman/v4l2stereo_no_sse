@@ -33,19 +33,28 @@ void Elas::process (uint8_t* I1_,uint8_t* I2_,float* D1,float* D2,const int32_t*
 	// get width, height and bytes per line
 	width  = dims[0];
 	height = dims[1];
-	bpl    = width + 15-(width-1)%16;
+	if ((width & 0xF) != 0 || width != dims[2]) {
+		bpl = width + 15-(width-1)%16;
+		copied = true;
 
-	// copy images to byte aligned memory
-	I1 = (uint8_t*)_mm_malloc(bpl*height*sizeof(uint8_t),16);
-	I2 = (uint8_t*)_mm_malloc(bpl*height*sizeof(uint8_t),16);
-	if (bpl==dims[2]) {
-		memcpy(I1,I1_,bpl*height*sizeof(uint8_t));
-		memcpy(I2,I2_,bpl*height*sizeof(uint8_t));
-	} else {
-		for (int32_t v=0; v<height; v++) {
-			memcpy(I1+v*bpl,I1_+v*dims[2],width*sizeof(uint8_t));
-			memcpy(I2+v*bpl,I2_+v*dims[2],width*sizeof(uint8_t));
+                printf("Copied\n"); // XXX
+		// copy images to byte aligned memory
+		posix_memalign ((void **)&I1, 16, bpl*height*sizeof(uint8_t));
+		posix_memalign ((void **)&I2, 16, bpl*height*sizeof(uint8_t));
+		if (bpl==dims[2]) {
+			memcpy(I1,I1_,bpl*height*sizeof(uint8_t));
+			memcpy(I2,I2_,bpl*height*sizeof(uint8_t));
+		} else {
+			for (int32_t v=0; v<height; v++) {
+				memcpy(I1+v*bpl,I1_+v*dims[2],width*sizeof(uint8_t));
+				memcpy(I2+v*bpl,I2_+v*dims[2],width*sizeof(uint8_t));
+			}
 		}
+	} else {
+		bpl = width;
+		copied = false;
+		I1 = I1_;
+		I2 = I2_;
 	}
 
 	// allocate memory for disparity grid
@@ -134,8 +143,10 @@ void Elas::process (uint8_t* I1_,uint8_t* I2_,float* D1,float* D2,const int32_t*
 	// release memory
 	free(disparity_grid_1);
 	free(disparity_grid_2);
-	_mm_free(I1);
-	_mm_free(I2);
+	if (copied) {
+		free(I1);
+		free(I2);
+	}
 }
 
 void Elas::removeInconsistentSupportPoints (int16_t* D_can,int32_t D_can_width,int32_t D_can_height) {
@@ -254,7 +265,7 @@ void Elas::addCornerSupportPoints(vector<support_pt> &p_support) {
 		p_support.push_back(p_border[i]);
 }
 
-inline int16_t Elas::computeMatchingDisparity (const int32_t &u,const int32_t &v,uint8_t* I1_desc,uint8_t* I2_desc,const bool &right_image) {
+inline int16_t Elas::computeMatchingDisparity (const int32_t u,const int32_t v,uint8_t* I1_desc,uint8_t* I2_desc,const bool right_image) {
 
 	const int32_t u_step      = 2;
 	const int32_t v_step      = 2;
@@ -264,8 +275,6 @@ inline int16_t Elas::computeMatchingDisparity (const int32_t &u,const int32_t &v
 	int32_t desc_offset_2 = +16*u_step-16*width*v_step;
 	int32_t desc_offset_3 = -16*u_step+16*width*v_step;
 	int32_t desc_offset_4 = +16*u_step+16*width*v_step;
-
-	__m128i xmm1,xmm2,xmm3,xmm4,xmm5,xmm6;
 
 	// check if we are inside the image region
 	if (u>=window_size+u_step && u<=width-window_size-1-u_step && v>=window_size+v_step && v<=height-window_size-1-v_step) {
@@ -292,12 +301,6 @@ inline int16_t Elas::computeMatchingDisparity (const int32_t &u,const int32_t &v
 		if (sum<param.support_texture)
 			return -1;
 
-		// load first blocks to xmm registers
-		xmm1 = _mm_load_si128((__m128i*)(I1_block_addr+desc_offset_1));
-		xmm2 = _mm_load_si128((__m128i*)(I1_block_addr+desc_offset_2));
-		xmm3 = _mm_load_si128((__m128i*)(I1_block_addr+desc_offset_3));
-		xmm4 = _mm_load_si128((__m128i*)(I1_block_addr+desc_offset_4));
-
 		// declare match energy for each disparity
 		int32_t u_warp;
 
@@ -309,7 +312,7 @@ inline int16_t Elas::computeMatchingDisparity (const int32_t &u,const int32_t &v
 
 		// get valid disparity range
 		int32_t disp_min_valid = max(param.disp_min,0);
-		int32_t disp_max_valid = param.disp_max;
+		int32_t disp_max_valid;
 		if (!right_image) disp_max_valid = min(param.disp_max,u-window_size-u_step);
 		else              disp_max_valid = min(param.disp_max,width-u-window_size-u_step);
 
@@ -328,15 +331,17 @@ inline int16_t Elas::computeMatchingDisparity (const int32_t &u,const int32_t &v
 			I2_block_addr = I2_line_addr+16*u_warp;
 
 			// compute match energy at this disparity
-			xmm6 = _mm_load_si128((__m128i*)(I2_block_addr+desc_offset_1));
-			xmm6 = _mm_sad_epu8(xmm1,xmm6);
-			xmm5 = _mm_load_si128((__m128i*)(I2_block_addr+desc_offset_2));
-			xmm6 = _mm_add_epi16(_mm_sad_epu8(xmm2,xmm5),xmm6);
-			xmm5 = _mm_load_si128((__m128i*)(I2_block_addr+desc_offset_3));
-			xmm6 = _mm_add_epi16(_mm_sad_epu8(xmm3,xmm5),xmm6);
-			xmm5 = _mm_load_si128((__m128i*)(I2_block_addr+desc_offset_4));
-			xmm6 = _mm_add_epi16(_mm_sad_epu8(xmm4,xmm5),xmm6);
-			sum  = _mm_extract_epi16(xmm6,0)+_mm_extract_epi16(xmm6,4);
+			sum = 0;
+			for (int32_t i = 0; i < 16; i++) {
+				sum += abs(I1_block_addr[i+desc_offset_1] -
+				           I2_block_addr[i+desc_offset_1]);
+				sum += abs(I1_block_addr[i+desc_offset_2] -
+				           I2_block_addr[i+desc_offset_2]);
+				sum += abs(I1_block_addr[i+desc_offset_3] -
+				           I2_block_addr[i+desc_offset_3]);
+				sum += abs(I1_block_addr[i+desc_offset_4] -
+				           I2_block_addr[i+desc_offset_4]);
+			}
 
 			// best + second best match
 			if (sum<min_1_E) {
@@ -644,22 +649,26 @@ void Elas::createGrid(vector<support_pt> p_support,int32_t* disparity_grid,int32
 	free(temp2);
 }
 
-inline void Elas::updatePosteriorMinimum(__m128i* I2_block_addr,const int32_t &d,const int32_t &w,
-                                         const __m128i &xmm1,__m128i &xmm2,int32_t &val,int32_t &min_val,int32_t &min_d) {
-	xmm2 = _mm_load_si128(I2_block_addr);
-	xmm2 = _mm_sad_epu8(xmm1,xmm2);
-	val  = _mm_extract_epi16(xmm2,0)+_mm_extract_epi16(xmm2,4)+w;
+inline void Elas::updatePosteriorMinimum(const uint8_t* I1_block_addr,const uint8_t* I2_block_addr,const int32_t d,const int32_t w,
+                                         int32_t &min_val,int32_t &min_d) {
+	int32_t val = w;
+
+	for (int32_t i = 0; i < 16; i++) {
+		val += abs(I1_block_addr[i] - I2_block_addr[i]);
+	}
 	if (val<min_val) {
 		min_val = val;
 		min_d   = d;
 	}
 }
 
-inline void Elas::updatePosteriorMinimum(__m128i* I2_block_addr,const int32_t &d,
-                                         const __m128i &xmm1,__m128i &xmm2,int32_t &val,int32_t &min_val,int32_t &min_d) {
-	xmm2 = _mm_load_si128(I2_block_addr);
-	xmm2 = _mm_sad_epu8(xmm1,xmm2);
-	val  = _mm_extract_epi16(xmm2,0)+_mm_extract_epi16(xmm2,4);
+inline void Elas::updatePosteriorMinimum(const uint8_t* I1_block_addr,const uint8_t* I2_block_addr,const int32_t d,
+                                         int32_t &min_val,int32_t &min_d) {
+	int32_t val = 0;
+
+	for (int32_t i = 0; i < 16; i++) {
+		val += abs(I1_block_addr[i] - I2_block_addr[i]);
+	}
 	if (val<min_val) {
 		min_val = val;
 		min_d   = d;
@@ -717,11 +726,9 @@ inline void Elas::findMatch(int32_t &u,int32_t &v,float &plane_a,float &plane_b,
 	int32_t* d_grid    = disparity_grid+grid_addr+1;
 
 	// loop variables
-	int32_t d_curr, u_warp, val;
+	int32_t d_curr, u_warp;
 	int32_t min_val = 10000;
 	int32_t min_d   = -1;
-	__m128i xmm1    = _mm_load_si128((__m128i*)I1_block_addr);
-	__m128i xmm2;
 
 	// left image
 	if (!right_image) {
@@ -731,14 +738,14 @@ inline void Elas::findMatch(int32_t &u,int32_t &v,float &plane_a,float &plane_b,
 				u_warp = u-d_curr;
 				if (u_warp<window_size || u_warp>width-window_size-1)
 					continue;
-				updatePosteriorMinimum((__m128i*)(I2_line_addr+16*u_warp),d_curr,xmm1,xmm2,val,min_val,min_d);
+				updatePosteriorMinimum(I1_block_addr,I2_line_addr+16*u_warp,d_curr,min_val,min_d);
 			}
 		}
 		for (d_curr=d_plane_min; d_curr<=d_plane_max; d_curr++) {
 			u_warp = u-d_curr;
 			if (u_warp<window_size || u_warp>width-window_size-1)
 				continue;
-			updatePosteriorMinimum((__m128i*)(I2_line_addr+16*u_warp),d_curr,valid?*(P+abs(d_curr-d_plane)):0,xmm1,xmm2,val,min_val,min_d);
+			updatePosteriorMinimum(I1_block_addr,I2_line_addr+16*u_warp,d_curr,valid?*(P+abs(d_curr-d_plane)):0,min_val,min_d);
 		}
 
 		// right image
@@ -749,14 +756,14 @@ inline void Elas::findMatch(int32_t &u,int32_t &v,float &plane_a,float &plane_b,
 				u_warp = u+d_curr;
 				if (u_warp<window_size || u_warp>width-window_size-1)
 					continue;
-				updatePosteriorMinimum((__m128i*)(I2_line_addr+16*u_warp),d_curr,xmm1,xmm2,val,min_val,min_d);
+				updatePosteriorMinimum(I1_block_addr,I2_line_addr+16*u_warp,d_curr,min_val,min_d);
 			}
 		}
 		for (d_curr=d_plane_min; d_curr<=d_plane_max; d_curr++) {
 			u_warp = u+d_curr;
 			if (u_warp<window_size || u_warp>width-window_size-1)
 				continue;
-			updatePosteriorMinimum((__m128i*)(I2_line_addr+16*u_warp),d_curr,valid?*(P+abs(d_curr-d_plane)):0,xmm1,xmm2,val,min_val,min_d);
+			updatePosteriorMinimum(I1_block_addr,I2_line_addr+16*u_warp,d_curr,valid?*(P+abs(d_curr-d_plane)):0,min_val,min_d);
 		}
 	}
 
@@ -828,7 +835,10 @@ void Elas::computeDisparity(vector<support_pt> p_support,vector<triangle> tri,in
 			tri_u[1] = p_support[c2].u-p_support[c2].d;
 			tri_u[2] = p_support[c3].u-p_support[c3].d;
 		}
-		float tri_v[3] = {p_support[c1].v,p_support[c2].v,p_support[c3].v};
+		float tri_v[3];
+		tri_v[0] = p_support[c1].v;
+		tri_v[1] = p_support[c2].v;
+		tri_v[2] = p_support[c3].v;
 
 		for (uint32_t j=0; j<3; j++) {
 			for (uint32_t k=0; k<j; k++) {
@@ -1256,22 +1266,11 @@ void Elas::adaptiveMean (float* D) {
 		*(D+i)     = -10;
 	}
 
-	__m128 xconst0 = _mm_set1_ps(0);
-	__m128 xconst4 = _mm_set1_ps(4);
-	__m128 xval,xweight1,xweight2,xfactor1,xfactor2;
-
 	float *val    = (float*)_mm_malloc(8*sizeof(float),16);
-	float *weight = (float*)_mm_malloc(4*sizeof(float),16);
-	float *factor = (float*)_mm_malloc(4*sizeof(float),16);
-
-	// set absolute mask
-	val[0] = 0x7FFFFFFF; val[1] = 0x7FFFFFFF;
-	val[2] = 0x7FFFFFFF; val[3] = 0x7FFFFFFF;
-	__m128 xabsmask = _mm_load_ps(val);
 
 	// when doing subsampling: 4 pixel bilateral filter width
 	if (param.subsampling) {
-
+#if 0
 		// horizontal filter
 		for (int32_t v=3; v<D_height-3; v++) {
 
@@ -1284,13 +1283,17 @@ void Elas::adaptiveMean (float* D) {
 
 				// set
 				float val_curr = *(D_copy+v*D_width+u);
-				val[u%4] = val_curr;
+				val[u & 3] = val_curr;
 
 				xval     = _mm_load_ps(val);
+				// r0 := a0 - b0, r1 := a1 - b1, r2 := a2 - b2, r3 := a3 - b3
 				xweight1 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
+				// r0 := a0 & b0, r1 := a1 & b1, r2 := a2 & b2, r3 := a3 & b3
 				xweight1 = _mm_and_ps(xweight1,xabsmask);
 				xweight1 = _mm_sub_ps(xconst4,xweight1);
+				// max(a0, b0) ...
 				xweight1 = _mm_max_ps(xconst0,xweight1);
+				// Multiplies the four single-precision, floating-point values of a and b.
 				xfactor1 = _mm_mul_ps(xval,xweight1);
 
 				_mm_store_ps(weight,xweight1);
@@ -1315,7 +1318,7 @@ void Elas::adaptiveMean (float* D) {
 
 				// set
 				float val_curr = *(D_tmp+v*D_width+u);
-				val[v%4] = val_curr;
+				val[v & 3] = val_curr;
 
 				xval     = _mm_load_ps(val);
 				xweight1 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
@@ -1335,6 +1338,7 @@ void Elas::adaptiveMean (float* D) {
 		}
 
 		// full resolution: 8 pixel bilateral filter width
+#endif
 	} else {
 
 		// horizontal filter
@@ -1349,30 +1353,17 @@ void Elas::adaptiveMean (float* D) {
 
 				// set
 				float val_curr = *(D_copy+v*D_width+u);
-				val[u%8] = val_curr;
+				val[u & 7] = val_curr;
 
-				xval     = _mm_load_ps(val);
-				xweight1 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
-				xweight1 = _mm_and_ps(xweight1,xabsmask);
-				xweight1 = _mm_sub_ps(xconst4,xweight1);
-				xweight1 = _mm_max_ps(xconst0,xweight1);
-				xfactor1 = _mm_mul_ps(xval,xweight1);
-
-				xval     = _mm_load_ps(val+4);
-				xweight2 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
-				xweight2 = _mm_and_ps(xweight2,xabsmask);
-				xweight2 = _mm_sub_ps(xconst4,xweight2);
-				xweight2 = _mm_max_ps(xconst0,xweight2);
-				xfactor2 = _mm_mul_ps(xval,xweight2);
-
-				xweight1 = _mm_add_ps(xweight1,xweight2);
-				xfactor1 = _mm_add_ps(xfactor1,xfactor2);
-
-				_mm_store_ps(weight,xweight1);
-				_mm_store_ps(factor,xfactor1);
-
-				float weight_sum = weight[0]+weight[1]+weight[2]+weight[3];
-				float factor_sum = factor[0]+factor[1]+factor[2]+factor[3];
+				float weight_sum = 0.0;
+				float factor_sum = 0.0;
+				for (int32_t i=0; i<8; i++) {
+					float tmp = (float)4.0 - fabsf(val[i] - val_curr);
+					if (tmp < 0.0)
+						tmp = 0.0;
+					weight_sum += tmp;
+					factor_sum += val[i] * tmp;
+				}
 				if (weight_sum>0)
 					*(D_tmp+v*D_width+u) = factor_sum/weight_sum;
 			}
@@ -1390,30 +1381,17 @@ void Elas::adaptiveMean (float* D) {
 
 				// set
 				float val_curr = *(D_tmp+v*D_width+u);
-				val[v%8] = val_curr;
+				val[v & 7] = val_curr;
 
-				xval     = _mm_load_ps(val);
-				xweight1 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
-				xweight1 = _mm_and_ps(xweight1,xabsmask);
-				xweight1 = _mm_sub_ps(xconst4,xweight1);
-				xweight1 = _mm_max_ps(xconst0,xweight1);
-				xfactor1 = _mm_mul_ps(xval,xweight1);
-
-				xval     = _mm_load_ps(val+4);
-				xweight2 = _mm_sub_ps(xval,_mm_set1_ps(val_curr));
-				xweight2 = _mm_and_ps(xweight2,xabsmask);
-				xweight2 = _mm_sub_ps(xconst4,xweight2);
-				xweight2 = _mm_max_ps(xconst0,xweight2);
-				xfactor2 = _mm_mul_ps(xval,xweight2);
-
-				xweight1 = _mm_add_ps(xweight1,xweight2);
-				xfactor1 = _mm_add_ps(xfactor1,xfactor2);
-
-				_mm_store_ps(weight,xweight1);
-				_mm_store_ps(factor,xfactor1);
-
-				float weight_sum = weight[0]+weight[1]+weight[2]+weight[3];
-				float factor_sum = factor[0]+factor[1]+factor[2]+factor[3];
+				float weight_sum = 0.0;
+				float factor_sum = 0.0;
+				for (int32_t i=0; i<8; i++) {
+					float tmp = (float)4.0 - fabsf(val[i] - val_curr);
+					if (tmp < 0.0)
+						tmp = 0.0;
+					weight_sum += tmp;
+					factor_sum += val[i] * tmp;
+				}
 				if (weight_sum>0)
 					*(D+v*D_width+u) = factor_sum/weight_sum;
 			}
@@ -1422,8 +1400,6 @@ void Elas::adaptiveMean (float* D) {
 
 	// free memory
 	_mm_free(val);
-	_mm_free(weight);
-	_mm_free(factor);
 	free(D_copy);
 	free(D_tmp);
 }
