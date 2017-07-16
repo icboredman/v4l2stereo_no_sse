@@ -654,12 +654,13 @@ void Camera::toMono(unsigned char * img)
 void Camera::toIplImage(IplImage *l) {
 	unsigned char *l_=(unsigned char *)l->imageData;
 
+	int hstart = (height - l->height) / 2;
 
 	for(int x=0; x<w2; x++) {
-		for(int y=0; y<height; y++) {
+		for(int y=0; y<l->height; y++) {
 			int y0, y1, u, v; //y0 u y1 v
 
-			int i=(y*w2+x)*4;
+			int i=((y+hstart)*w2+x)*4;
 			y0=data[i];
 			u=data[i+1] - 128;
 			y1=data[i+2];
